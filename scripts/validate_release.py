@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import tempfile
 from pathlib import Path
 
@@ -109,7 +110,8 @@ def main() -> int:
 
     design_example = ROOT / "examples/design-review-status.md"
     if validator.is_file() and design_example.is_file():
-        invalid_text = design_example.read_text(encoding="utf-8").replace(
+        design_text = design_example.read_text(encoding="utf-8")
+        invalid_text = design_text.replace(
             "review_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "review_commit: null",
             1,
@@ -119,6 +121,73 @@ def main() -> int:
             invalid_path.write_text(invalid_text, encoding="utf-8")
             if not validator_namespace["validate"](invalid_path):
                 errors.append("handshake validator accepted an awaiting-review file without a commit")
+
+        unapproved_text = design_text.replace(
+            "scope_status: approved",
+            "scope_status: awaiting-human-approval",
+            1,
+        )
+        with tempfile.TemporaryDirectory(prefix="agent-review-handshake-") as temp_dir:
+            invalid_path = Path(temp_dir) / "unapproved-status.md"
+            invalid_path.write_text(unapproved_text, encoding="utf-8")
+            if not validator_namespace["validate"](invalid_path):
+                errors.append("handshake validator accepted active work without human scope approval")
+
+        exhausted_text = design_text.replace("review_round: 1", "review_round: 4", 1)
+        with tempfile.TemporaryDirectory(prefix="agent-review-handshake-") as temp_dir:
+            invalid_path = Path(temp_dir) / "exhausted-status.md"
+            invalid_path.write_text(exhausted_text, encoding="utf-8")
+            if not validator_namespace["validate"](invalid_path):
+                errors.append("handshake validator accepted an active review beyond its round ceiling")
+
+        stale_scope_text = design_text.replace("scope_version: 1", "scope_version: 2", 1)
+        with tempfile.TemporaryDirectory(prefix="agent-review-handshake-") as temp_dir:
+            invalid_path = Path(temp_dir) / "stale-scope-status.md"
+            invalid_path.write_text(stale_scope_text, encoding="utf-8")
+            if not validator_namespace["validate"](invalid_path):
+                errors.append("handshake validator accepted metadata without the matching scope contract version")
+
+        scope_change_text = (
+            design_text.replace("status: awaiting-review", "status: paused", 1)
+            .replace("scope_status: approved", "scope_status: change-requested", 1)
+            .replace("scope_resume_status: null", "scope_resume_status: awaiting-review", 1)
+        )
+        with tempfile.TemporaryDirectory(prefix="agent-review-handshake-") as temp_dir:
+            valid_path = Path(temp_dir) / "scope-change-status.md"
+            valid_path.write_text(scope_change_text, encoding="utf-8")
+            scope_change_errors = validator_namespace["validate"](valid_path)
+            if scope_change_errors:
+                errors.append(
+                    "handshake validator rejected a valid paused scope escalation: "
+                    + "; ".join(scope_change_errors)
+                )
+
+        scope_start = design_text.index("## Scope Contract — Version 1")
+        scope_end = design_text.index("\n## Purpose", scope_start)
+        scope_v2 = design_text[scope_start:scope_end].replace(
+            "## Scope Contract — Version 1",
+            "## Scope Contract — Version 2",
+            1,
+        )
+        rescoped_text = (
+            design_text.replace("scope_version: 1", "scope_version: 2", 1)
+            .replace(
+                "last_reviewed_commit: null",
+                "last_reviewed_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                1,
+            )
+            .replace("last_reviewed_scope_version: null", "last_reviewed_scope_version: 1", 1)
+            .replace("\n## Purpose", f"\n{scope_v2}\n\n## Purpose", 1)
+        )
+        with tempfile.TemporaryDirectory(prefix="agent-review-handshake-") as temp_dir:
+            valid_path = Path(temp_dir) / "rescoped-same-commit.md"
+            valid_path.write_text(rescoped_text, encoding="utf-8")
+            rescoped_errors = validator_namespace["validate"](valid_path)
+            if rescoped_errors:
+                errors.append(
+                    "handshake validator rejected the same commit under a new approved scope: "
+                    + "; ".join(rescoped_errors)
+                )
 
     python_files = [ROOT / "scripts/validate_release.py", validator]
     for path in python_files:

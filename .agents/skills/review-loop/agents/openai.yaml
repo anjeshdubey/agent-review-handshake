@@ -1,4 +1,4 @@
 interface:
   display_name: "Review Loop Worker"
-  short_description: "Handle the worker side of review handshakes"
-  default_prompt: "Use $review-loop to prepare or continue the worker side of a Git-backed review handshake."
+  short_description: "Work inside human-approved review scope"
+  default_prompt: "Use $review-loop to prepare or revise work within a human-approved Git-backed review handshake."

@@ -1,4 +1,4 @@
 interface:
   display_name: "Run Review Handshake"
-  short_description: "Run independent, evidence-backed review loops"
-  default_prompt: "Use $run-review-handshake to set up or resume the reviewer side of a Git-backed review handshake."
+  short_description: "Run scope-gated independent review loops"
+  default_prompt: "Use $run-review-handshake to establish a human-approved scope and run an independent Git-backed review loop."
